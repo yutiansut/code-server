@@ -141,12 +141,10 @@ if (isCli) {
 	}
 
 	let newestVersion = "";
-	// TODO: remove bang
 	if (process.env.VERSION) {
 		let currentVersion = process.env.VERSION;
 		const recentRelease = await getRecentRelease();
 
-		// TODO: replace string with currentVersion
 		if (compareVersions(currentVersion, recentRelease)! <= 1) {
 			newestVersion = recentRelease;
 		} else {
