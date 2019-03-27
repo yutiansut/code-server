@@ -151,10 +151,11 @@ if (isCli) {
 			newestVersion = currentVersion;
 		}
 	}
-	if (newestVersion === process.env.VERSION){
+	if (newestVersion === process.env.VERSION) {
 		logger.info(`You are using the latest version: ${newestVersion}`);
+	} else {
+		logger.info(`New version (\u001B[1m${newestVersion}) available at https://github.com/codercom/code-server/releases`);
 	}
-	logger.info(`Latest version is \u001B[1m${newestVersion}`);
 	logger.info(`\u001B[1mcode-server ${process.env.VERSION ? `v${process.env.VERSION}` : "development"}`);
 	// TODO: fill in appropriate doc url
 	logger.info("Additional documentation: http://github.com/codercom/code-server");
