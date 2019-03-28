@@ -154,7 +154,7 @@ if (isCli) {
 	if (newestVersion === process.env.VERSION || newestVersion === "") {
 		logger.info("You are using the latest version");
 	} else {
-		logger.info(`New version (\u001B[1m${newestVersion}) available at https://github.com/codercom/code-server/releases`);
+		logger.info(`New version (\u001B[1m${newestVersion}) available https://github.com/codercom/code-server/releases`);
 	}
 	logger.info(`\u001B[1mcode-server ${process.env.VERSION ? `v${process.env.VERSION}` : "development"}`);
 	// TODO: fill in appropriate doc url
