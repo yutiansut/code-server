@@ -141,7 +141,7 @@ if (isCli) {
 	}
 
 	if (isCli) {
-		let currentVersion = process.env.VERSION;
+		const currentVersion = process.env.VERSION;
 		try {
 			const recentRelease = await getRecentRelease();
 			if (recentRelease !== currentVersion) {
