@@ -145,13 +145,12 @@ if (isCli) {
 		try {
 			const recentRelease = await getRecentRelease();
 			if (recentRelease !== currentVersion) {
-				logger.warn(`New version (\u001B[1m${recentRelease}\u001B[0m) available https://github.com/codercom/code-server/releases/latest`);
+				logger.warn(`New version available! (\u001B[1m${recentRelease}\u001B[0m) https://github.com/codercom/code-server/releases/latest`);
 			}
 		} catch (err) {
 			logger.error(`Failed to check latest release: ${err}`);
 		}
 	}
-	// TODO: fill in appropriate doc url
 	logger.info(`\u001B[1mcode-server ${process.env.VERSION ? `v${process.env.VERSION}` : "development"}`);
 	logger.info("Additional documentation: http://github.com/codercom/code-server");
 	logger.info("Initializing", field("data-dir", dataDir), field("working-dir", workingDir), field("log-dir", logDir));
@@ -249,7 +248,6 @@ if (isCli) {
 
 	if (!options.certKey && !options.cert) {
 		logger.warn("No certificate specified. \u001B[1mThis could be insecure.");
-		// TODO: fill in appropriate doc url
 		logger.warn("Documentation on securing your setup: https://github.com/codercom/code-server/blob/master/doc/security/ssl.md");
 	}
 
