@@ -128,19 +128,9 @@ describe("chrome e2e", () => {
 			.then(server.loadPage.bind(server));
 		await workbenchQuickOpen(page);
 		await page.waitFor(1000);
-		// await page.keyboard.type(testFileName, { delay: 100 });
-		// await page.keyboard.press("Enter");
-		// await page.waitFor(1000);
-
-		// Check that the JavaScript Snippets extension works.
-		await page.keyboard.type("req");
+		await page.keyboard.type(testFileName, { delay: 100 });
+		await page.keyboard.press("Enter");
 		await page.waitFor(1000);
-		await page.keyboard.press("Enter");
-		await page.waitFor(500);
-		await page.keyboard.type("fs", { delay: 50 });
-		await page.waitFor(500);
-		await page.keyboard.press("Tab");
-		await page.keyboard.press("Enter");
 
 		// Start code block.
 		await page.keyboard.type(`console.log("hello");
