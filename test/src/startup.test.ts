@@ -1,7 +1,7 @@
 import * as puppeteer from "puppeteer";
 import { TestServer } from "./index";
 
-describe("server configuration e2e", () => {
+describe("startup e2e", () => {
 	let servers: { [tag: string]: TestServer } = {};
 
 	beforeAll(async () => {
