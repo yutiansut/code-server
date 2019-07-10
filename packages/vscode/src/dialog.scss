@@ -2,6 +2,7 @@
 	--primary: #2A2E37;
 	--border: black;
 	--faded: #a0a1a5;
+	--disabled: #888;
 	--header-background: #161616;
 	--header-foreground: white;
 	--list-active-selection-background: rgb(0, 120, 160);
@@ -78,9 +79,7 @@
 		.dialog-entry {
 			cursor: pointer;
 			font-size: 1.02em;
-			padding: 0px;
-			padding-left: 8px;
-			padding-right: 8px;
+			padding: 0px 8px;
 
 			.dialog-entry-info {
 				display: flex;
@@ -93,6 +92,14 @@
 				margin-right: 5px;
 			}
 
+			.dialog-entry-size {
+				text-align: right;
+			}
+
+			.dialog-entry-mtime {
+				padding-left: 8px;
+			}
+
 			&:hover {
 				background-color: var(--list-hover-background);
 			}
@@ -100,6 +107,12 @@
 			&.active {
 				background-color: var(--list-active-selection-background);
 				color: var(--list-active-selection-foreground);
+			}
+
+			&.disabled, &.disabled:hover {
+				background-color: var(--primary);
+				color: var(--disabled);
+				cursor: initial;
 			}
 		}
 	}
@@ -133,6 +146,11 @@
 				background: var(--titlebar);
 				color: white;
 			}
+		}
+
+		button[disabled], button[disabled]:hover {
+			color: var(--disabled);
+			cursor: initial;
 		}
 	}
 }

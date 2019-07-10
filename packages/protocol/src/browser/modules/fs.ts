@@ -1,11 +1,11 @@
 import * as fs from "fs";
 import { callbackify } from "util";
-import { ClientProxy, Batch } from "../../common/proxy";
+import { Batch, ClientProxy, ClientServerProxy } from "../../common/proxy";
 import { IEncodingOptions, IEncodingOptionsCallback } from "../../common/util";
-import { FsModuleProxy, Stats as IStats, WatcherProxy, WriteStreamProxy } from "../../node/modules/fs";
-import { Writable  } from "./stream";
+import { FsModuleProxy, ReadStreamProxy, Stats as IStats, WatcherProxy, WriteStreamProxy } from "../../node/modules/fs";
+import { Readable, Writable  } from "./stream";
 
-// tslint:disable no-any
+// tslint:disable completed-docs no-any
 
 class StatBatch extends Batch<IStats, { path: fs.PathLike }> {
 	public constructor(private readonly proxy: FsModuleProxy) {
@@ -37,9 +37,11 @@ class ReaddirBatch extends Batch<Buffer[] | fs.Dirent[] | string[], { path: fs.P
 	}
 }
 
-class Watcher extends ClientProxy<WatcherProxy> implements fs.FSWatcher {
+interface ClientWatcherProxy extends WatcherProxy, ClientServerProxy<fs.FSWatcher> {}
+
+class Watcher extends ClientProxy<ClientWatcherProxy> implements fs.FSWatcher {
 	public close(): void {
-		this.proxy.close();
+		this.catch(this.proxy.close());
 	}
 
 	protected handleDisconnect(): void {
@@ -47,7 +49,25 @@ class Watcher extends ClientProxy<WatcherProxy> implements fs.FSWatcher {
 	}
 }
 
-class WriteStream extends Writable<WriteStreamProxy> implements fs.WriteStream {
+interface ClientReadStreamProxy extends ReadStreamProxy, ClientServerProxy<fs.ReadStream> {}
+
+class ReadStream extends Readable<ClientReadStreamProxy> implements fs.ReadStream {
+	public get bytesRead(): number {
+		throw new Error("not implemented");
+	}
+
+	public get path(): string | Buffer {
+		throw new Error("not implemented");
+	}
+
+	public close(): void {
+		this.catch(this.proxy.close());
+	}
+}
+
+interface ClientWriteStreamProxy extends WriteStreamProxy, ClientServerProxy<fs.WriteStream> {}
+
+class WriteStream extends Writable<ClientWriteStreamProxy> implements fs.WriteStream {
 	public get bytesWritten(): number {
 		throw new Error("not implemented");
 	}
@@ -57,8 +77,14 @@ class WriteStream extends Writable<WriteStreamProxy> implements fs.WriteStream {
 	}
 
 	public close(): void {
-		this.proxy.close();
+		this.catch(this.proxy.close());
 	}
+}
+
+interface ClientFsModuleProxy extends FsModuleProxy, ClientServerProxy {
+	createReadStream(path: fs.PathLike, options?: any): Promise<ClientReadStreamProxy>;
+	createWriteStream(path: fs.PathLike, options?: any): Promise<ClientWriteStreamProxy>;
+	watch(filename: fs.PathLike, options?: IEncodingOptions): Promise<ClientWatcherProxy>;
 }
 
 export class FsModule {
@@ -66,7 +92,7 @@ export class FsModule {
 	private readonly lstatBatch: LstatBatch;
 	private readonly readdirBatch: ReaddirBatch;
 
-	public constructor(private readonly proxy: FsModuleProxy) {
+	public constructor(private readonly proxy: ClientFsModuleProxy) {
 		this.statBatch = new StatBatch(this.proxy);
 		this.lstatBatch = new LstatBatch(this.proxy);
 		this.readdirBatch = new ReaddirBatch(this.proxy);
@@ -107,6 +133,10 @@ export class FsModule {
 		callbackify(this.proxy.copyFile)(
 			src, dest, typeof flags !== "function" ? flags : undefined, callback!,
 		);
+	}
+
+	public createReadStream = (path: fs.PathLike, options?: any): fs.ReadStream => {
+		return new ReadStream(this.proxy.createReadStream(path, options));
 	}
 
 	public createWriteStream = (path: fs.PathLike, options?: any): fs.WriteStream => {
@@ -316,17 +346,7 @@ export class FsModule {
 }
 
 class Stats implements fs.Stats {
-	public readonly atime: Date;
-	public readonly mtime: Date;
-	public readonly ctime: Date;
-	public readonly birthtime: Date;
-
-	public constructor(private readonly stats: IStats) {
-		this.atime = new Date(stats.atime);
-		this.mtime = new Date(stats.mtime);
-		this.ctime = new Date(stats.ctime);
-		this.birthtime = new Date(stats.birthtime);
-	}
+	public constructor(private readonly stats: IStats) {}
 
 	public get dev(): number { return this.stats.dev; }
 	public get ino(): number { return this.stats.ino; }
@@ -338,6 +358,10 @@ class Stats implements fs.Stats {
 	public get size(): number { return this.stats.size; }
 	public get blksize(): number { return this.stats.blksize; }
 	public get blocks(): number { return this.stats.blocks; }
+	public get atime(): Date { return this.stats.atime; }
+	public get mtime(): Date { return this.stats.mtime; }
+	public get ctime(): Date { return this.stats.ctime; }
+	public get birthtime(): Date { return this.stats.birthtime; }
 	public get atimeMs(): number { return this.stats.atimeMs; }
 	public get mtimeMs(): number { return this.stats.mtimeMs; }
 	public get ctimeMs(): number { return this.stats.ctimeMs; }

@@ -4,8 +4,6 @@
     "dependencies": {
         "express": "^4.16.4",
         "google-protobuf": "^3.6.1",
-        "node-pty-prebuilt": "^0.7.6",
-        "spdlog": "^0.7.2",
         "trash": "^4.3.0",
         "ws": "^6.1.2"
     },
@@ -16,5 +14,8 @@
         "rimraf": "^2.6.3",
         "text-encoding": "^0.7.0",
         "ts-protoc-gen": "^0.8.0"
+    },
+    "scripts": {
+        "gen": "./scripts/generate_proto.sh"
     }
 }

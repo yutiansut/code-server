@@ -1,16 +1,25 @@
 language: node_js
 node_js:
-- 8.15.0
-env:
-  - VSCODE_VERSION="1.32.0" MAJOR_VERSION="1" VERSION="$MAJOR_VERSION.$TRAVIS_BUILD_NUMBER-vsc$VSCODE_VERSION"
+- 10.15.1
+services:
+- docker
 matrix:
   include:
   - os: linux
-    dist: ubuntu
+    dist: trusty
+    env:
+      - VSCODE_VERSION="1.33.1" MAJOR_VERSION="1" VERSION="$MAJOR_VERSION.$TRAVIS_BUILD_NUMBER-vsc$VSCODE_VERSION" TARGET="centos"
+  - os: linux
+    dist: trusty
+    env:
+      - VSCODE_VERSION="1.33.1" MAJOR_VERSION="1" VERSION="$MAJOR_VERSION.$TRAVIS_BUILD_NUMBER-vsc$VSCODE_VERSION" TARGET="alpine"
   - os: osx
+    env:
+      - VSCODE_VERSION="1.33.1" MAJOR_VERSION="1" VERSION="$MAJOR_VERSION.$TRAVIS_BUILD_NUMBER-vsc$VSCODE_VERSION"
 before_install:
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install libxkbfile-dev
   libsecret-1-dev; fi
+- npm install -g yarn@1.12.3
 script:
 - scripts/build.sh
 before_deploy:
@@ -18,7 +27,6 @@ before_deploy:
 - git config --local user.name "$USER_NAME"
 - git config --local user.email "$USER_EMAIL"
 - git tag "$VERSION" "$TRAVIS_COMMIT"
-- yarn task package "$VERSION"
 deploy:
   provider: releases
   file_glob: true
@@ -33,6 +41,10 @@ deploy:
     - release/*.tar.gz
     - release/*.zip
   on:
-    repo: codercom/code-server
+    repo: cdr/code-server
     branch: master
-cache: yarn
+cache:
+  yarn: true
+  timeout: 1000
+  directories:
+  - .cache

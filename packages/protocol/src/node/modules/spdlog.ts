@@ -3,10 +3,16 @@ import { EventEmitter } from "events";
 import * as spdlog from "spdlog";
 import { ServerProxy } from "../../common/proxy";
 
-export class RotatingLoggerProxy implements ServerProxy {
-	private readonly emitter = new EventEmitter();
+// tslint:disable completed-docs
 
-	public constructor(private readonly logger: spdlog.RotatingLogger) {}
+export class RotatingLoggerProxy extends ServerProxy<EventEmitter> {
+	public constructor(private readonly logger: spdlog.RotatingLogger) {
+		super({
+			bindEvents: [],
+			doneEvents: ["dispose"],
+			instance: new EventEmitter(),
+		});
+	}
 
 	public async trace (message: string): Promise<void> { this.logger.trace(message); }
 	public async debug (message: string): Promise<void> { this.logger.debug(message); }
@@ -19,19 +25,10 @@ export class RotatingLoggerProxy implements ServerProxy {
 	public async flush (): Promise<void> { this.logger.flush(); }
 	public async drop (): Promise<void> { this.logger.drop(); }
 
-	public async onDone(cb: () => void): Promise<void> {
-		this.emitter.on("dispose", cb);
-	}
-
 	public async dispose(): Promise<void> {
-		this.flush();
-		this.emitter.emit("dispose");
-		this.emitter.removeAllListeners();
-	}
-
-	// tslint:disable-next-line no-any
-	public async onEvent(_cb: (event: string, ...args: any[]) => void): Promise<void> {
-		// No events.
+		await this.flush();
+		this.instance.emit("dispose");
+		await super.dispose();
 	}
 }
 

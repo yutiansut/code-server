@@ -2,11 +2,22 @@ import * as cp from "child_process";
 import * as net from "net";
 import * as stream from "stream";
 import { callbackify } from "util";
-import { ClientProxy } from "../../common/proxy";
-import { ChildProcessModuleProxy, ChildProcessProxy, ChildProcessProxies } from "../../node/modules/child_process";
-import { Readable, Writable } from "./stream";
+import { ClientProxy, ClientServerProxy } from "../../common/proxy";
+import { ChildProcessModuleProxy, ChildProcessProxy } from "../../node/modules/child_process";
+import { ClientWritableProxy, ClientReadableProxy, Readable, Writable } from "./stream";
 
-export class ChildProcess extends ClientProxy<ChildProcessProxy> implements cp.ChildProcess {
+// tslint:disable completed-docs
+
+export interface ClientChildProcessProxy extends ChildProcessProxy, ClientServerProxy<cp.ChildProcess> {}
+
+export interface ClientChildProcessProxies {
+	childProcess: ClientChildProcessProxy;
+	stdin?: ClientWritableProxy | null;
+	stdout?: ClientReadableProxy | null;
+	stderr?: ClientReadableProxy | null;
+}
+
+export class ChildProcess extends ClientProxy<ClientChildProcessProxy> implements cp.ChildProcess {
 	public readonly stdin: stream.Writable;
 	public readonly stdout: stream.Readable;
 	public readonly stderr: stream.Readable;
@@ -16,17 +27,17 @@ export class ChildProcess extends ClientProxy<ChildProcessProxy> implements cp.C
 	private _killed: boolean = false;
 	private _pid = -1;
 
-	public constructor(proxyPromises: Promise<ChildProcessProxies>) {
+	public constructor(proxyPromises: Promise<ClientChildProcessProxies>) {
 		super(proxyPromises.then((p) => p.childProcess));
 		this.stdin = new Writable(proxyPromises.then((p) => p.stdin!));
 		this.stdout = new Readable(proxyPromises.then((p) => p.stdout!));
 		this.stderr = new Readable(proxyPromises.then((p) => p.stderr!));
 		this.stdio = [this.stdin, this.stdout, this.stderr];
 
-		this.proxy.getPid().then((pid) => {
+		this.catch(this.proxy.getPid().then((pid) => {
 			this._pid = pid;
 			this._connected = true;
-		});
+		}));
 		this.on("disconnect", () => this._connected = false);
 		this.on("exit", () => {
 			this._connected = false;
@@ -48,19 +59,19 @@ export class ChildProcess extends ClientProxy<ChildProcessProxy> implements cp.C
 
 	public kill(): void {
 		this._killed = true;
-		this.proxy.kill();
+		this.catch(this.proxy.kill());
 	}
 
 	public disconnect(): void {
-		this.proxy.disconnect();
+		this.catch(this.proxy.disconnect());
 	}
 
 	public ref(): void {
-		this.proxy.ref();
+		this.catch(this.proxy.ref());
 	}
 
 	public unref(): void {
-		this.proxy.unref();
+		this.catch(this.proxy.unref());
 	}
 
 	public send(
@@ -88,14 +99,23 @@ export class ChildProcess extends ClientProxy<ChildProcessProxy> implements cp.C
 		return true; // Always true since we can't get this synchronously.
 	}
 
+	/**
+	 * Exit and close the process when disconnected.
+	 */
 	protected handleDisconnect(): void {
 		this.emit("exit", 1);
 		this.emit("close");
 	}
 }
 
+interface ClientChildProcessModuleProxy extends ChildProcessModuleProxy, ClientServerProxy {
+	exec(command: string, options?: { encoding?: string | null } & cp.ExecOptions | null, callback?: ((error: cp.ExecException | null, stdin: string | Buffer, stdout: string | Buffer) => void)): Promise<ClientChildProcessProxies>;
+	fork(modulePath: string, args?: string[], options?: cp.ForkOptions): Promise<ClientChildProcessProxies>;
+	spawn(command: string, args?: string[], options?: cp.SpawnOptions): Promise<ClientChildProcessProxies>;
+}
+
 export class ChildProcessModule {
-	public constructor(private readonly proxy: ChildProcessModuleProxy) {}
+	public constructor(private readonly proxy: ClientChildProcessModuleProxy) {}
 
 	public exec = (
 		command: string,

@@ -1,6 +1,4 @@
 import { ChildProcess } from "child_process";
-import * as fs from "fs";
-import * as fse from "fs-extra";
 import * as os from "os";
 import * as path from "path";
 import { forkModule } from "./bootstrapFork";
@@ -8,7 +6,8 @@ import { StdioIpcHandler } from "../ipc";
 import { ParsedArgs } from "vs/platform/environment/common/environment";
 import { Emitter } from "@coder/events/src";
 import { retry } from "@coder/ide/src/retry";
-import { logger, Level } from "@coder/logger";
+import { logger, field, Level } from "@coder/logger";
+import { withEnv } from "@coder/protocol";
 
 export enum SharedProcessState {
 	Stopped,
@@ -38,7 +37,10 @@ export class SharedProcess {
 
 	public constructor(
 		private readonly userDataDir: string,
+		private readonly extensionsDir: string,
 		private readonly builtInExtensionsDir: string,
+		private readonly extraExtensionDirs: string[],
+		private readonly extraBuiltinExtensionDirs: string[],
 	) {
 		this.retry.run();
 	}
@@ -65,12 +67,6 @@ export class SharedProcess {
 		this.setState({ state: SharedProcessState.Starting });
 		const activeProcess = await this.restart();
 
-		activeProcess.stderr.on("data", (data) => {
-			// Warn instead of error to prevent panic. It's unlikely stderr here is
-			// about anything critical to the functioning of the editor.
-			logger.warn(data.toString());
-		});
-
 		activeProcess.on("exit", (exitCode) => {
 			const error = new Error(`Exited with ${exitCode}`);
 			this.setState({
@@ -95,29 +91,17 @@ export class SharedProcess {
 			this.activeProcess.kill();
 		}
 
-		const extensionsDir = path.join(this.userDataDir, "extensions");
-		const backupsDir = path.join(this.userDataDir, "Backups");
-		await Promise.all([
-			fse.mkdirp(extensionsDir),
-			fse.mkdirp(backupsDir),
-		]);
-
-		const workspacesFile = path.join(backupsDir, "workspaces.json");
-		if (!fs.existsSync(workspacesFile)) {
-			fs.appendFileSync(workspacesFile, "");
-		}
-
-		const activeProcess = forkModule("vs/code/electron-browser/sharedProcess/sharedProcessMain", [], {
-			env: {
-				VSCODE_ALLOW_IO: "true",
-				VSCODE_LOGS: process.env.VSCODE_LOGS,
-			},
-		}, this.userDataDir);
+		const activeProcess = forkModule(
+			"vs/code/electron-browser/sharedProcess/sharedProcessMain", [],
+			withEnv({ env: { VSCODE_ALLOW_IO: "true" } }), this.userDataDir,
+		);
 		this.activeProcess = activeProcess;
 
 		await new Promise((resolve, reject): void => {
-			const doReject = (error: Error | number): void => {
-				if (typeof error === "number") {
+			const doReject = (error: Error | number | null): void => {
+				if (error === null) {
+					error = new Error("Exited unexpectedly");
+				} else if (typeof error === "number") {
 					error = new Error(`Exited with ${error}`);
 				}
 				activeProcess.removeAllListeners();
@@ -131,6 +115,16 @@ export class SharedProcess {
 			activeProcess.on("error", doReject);
 			activeProcess.on("exit", doReject);
 
+			activeProcess.stdout.on("data", (data) => {
+				logger.trace("stdout", field("data", data.toString()));
+			});
+
+			activeProcess.stderr.on("data", (data) => {
+				// Warn instead of error to prevent panic. It's unlikely stderr here is
+				// about anything critical to the functioning of the editor.
+				logger.warn("stderr", field("data", data.toString()));
+			});
+
 			this.ipcHandler = new StdioIpcHandler(activeProcess);
 			this.ipcHandler.once("handshake:hello", () => {
 				const data: {
@@ -141,7 +135,9 @@ export class SharedProcess {
 					args: {
 						"builtin-extensions-dir": this.builtInExtensionsDir,
 						"user-data-dir": this.userDataDir,
-						"extensions-dir": extensionsDir,
+						"extensions-dir": this.extensionsDir,
+						"extra-extension-dirs": this.extraExtensionDirs,
+						"extra-builtin-extension-dirs": this.extraBuiltinExtensionDirs,
 					},
 					logLevel: this.logger.level,
 					sharedIPCHandle: this.socketPath,

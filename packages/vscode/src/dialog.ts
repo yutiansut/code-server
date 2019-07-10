@@ -16,6 +16,9 @@ import { IThemeService } from "vs/platform/theme/common/themeService";
 import { workbench } from "./workbench";
 import "./dialog.scss";
 
+/**
+ * Describes the type of dialog to show.
+ */
 export enum DialogType {
 	NewFolder,
 	Save,
@@ -49,7 +52,15 @@ export type DialogOptions = OpenDialogOptions | SaveDialogOptions;
 
 export const showOpenDialog = (options: OpenDialogOptions): Promise<string> => {
 	return new Promise<string>((resolve, reject): void => {
-		const dialog = new Dialog(DialogType.Open, options);
+		// Make the default to show hidden files and directories since there is no
+		// other way to make them visible in the dialogs currently.
+		const dialog = new Dialog(DialogType.Open, typeof options.properties.showHiddenFiles === "undefined" ? {
+			...options,
+			properties: {
+				...options.properties,
+				showHiddenFiles: true,
+			},
+		} : options);
 		dialog.onSelect((e) => {
 			dialog.dispose();
 			resolve(e);
@@ -68,8 +79,12 @@ interface DialogEntry {
 	readonly isDirectory: boolean;
 	readonly size: number;
 	readonly lastModified: string;
+	readonly isDisabled?: boolean;
 }
 
+/**
+ * Open and save dialogs.
+ */
 class Dialog {
 	private _path: string | undefined;
 
@@ -108,7 +123,7 @@ class Dialog {
 		this.root.style.width = "850px";
 		this.root.style.height = "600px";
 		this.background.appendChild(this.root);
-		(document.getElementById("workbench.main.container") || document.body).appendChild(this.background);
+		(document.querySelector(".monaco-workbench") || document.body).appendChild(this.background);
 		this.root.classList.add("dialog");
 
 		const setProperty = (vari: string, id: string): void => {
@@ -263,10 +278,12 @@ class Dialog {
 
 				return;
 			}
+
+			// If it's a directory, we want to navigate to it. If it's a file, then we
+			// only want to open it if opening files is supported.
 			if (element.isDirectory) {
 				this.path = element.fullPath;
-			} else {
-				// Open
+			} else if ((this.options as OpenDialogOptions).properties.openFile) {
 				this.selectEmitter.emit(element.fullPath);
 			}
 		});
@@ -282,15 +299,22 @@ class Dialog {
 		});
 		buttonsNode.appendChild(cancelBtn);
 		const confirmBtn = document.createElement("button");
-		confirmBtn.innerText = "Confirm";
+		const openDirectory = (this.options as OpenDialogOptions).properties.openDirectory;
+		confirmBtn.innerText = this.options.buttonLabel || "Confirm";
 		confirmBtn.addEventListener("click", () => {
-			if (this._path) {
+			if (this._path && openDirectory) {
 				this.selectEmitter.emit(this._path);
 			}
 		});
+		// Disable if we can't open directories, otherwise you can open a directory
+		// as a file which won't work. This is because our button currently just
+		// always opens whatever directory is opened and will not open selected
+		// files. (A single click on a file is used to open it instead.)
+		if (!openDirectory) {
+			confirmBtn.disabled = true;
+		}
 		buttonsNode.appendChild(confirmBtn);
 		this.root.appendChild(buttonsNode);
-		this.entryList.layout();
 
 		this.path = options.defaultPath || "/";
 	}
@@ -303,6 +327,9 @@ class Dialog {
 		return this.errorEmitter.event;
 	}
 
+	/**
+	 * Remove the dialog.
+	 */
 	public dispose(): void {
 		this.selectEmitter.dispose();
 		this.errorEmitter.dispose();
@@ -310,6 +337,9 @@ class Dialog {
 		this.background.remove();
 	}
 
+	/**
+	 * Build and insert the path shown at the top of the dialog.
+	 */
 	private buildPath(): void {
 		while (this.pathNode.lastChild) {
 			this.pathNode.removeChild(this.pathNode.lastChild);
@@ -360,6 +390,8 @@ class Dialog {
 				return true;
 			});
 
+			this.entryList.layout();
+
 			this.entryList.setChildren(null, items.map((i: DialogEntry): ITreeElement<DialogEntry> => ({ element: i })));
 			this.entryList.domFocus();
 			this.entryList.setFocus([null]);
@@ -376,9 +408,12 @@ class Dialog {
 		return (<any>this.entryList).typeFilterController.filter._pattern;
 	}
 
+	/**
+	 * List the files and return dialog entries.
+	 */
 	private async list(directory: string): Promise<ReadonlyArray<DialogEntry>> {
 		const paths = (await util.promisify(fs.readdir)(directory)).sort();
-		const stats = await Promise.all(paths.map(p => util.promisify(fs.stat)(path.join(directory, p))));
+		const stats = await Promise.all(paths.map(p => util.promisify(fs.lstat)(path.join(directory, p))));
 
 		return stats.map((stat, index): DialogEntry => ({
 			fullPath: path.join(directory, paths[index]),
@@ -386,6 +421,9 @@ class Dialog {
 			isDirectory: stat.isDirectory(),
 			lastModified: stat.mtime.toDateString(),
 			size: stat.size,
+			// If we can't open files, show them as disabled.
+			isDisabled: !stat.isDirectory()
+				&& !(this.options as OpenDialogOptions).properties.openFile,
 		}));
 	}
 }
@@ -397,11 +435,17 @@ interface DialogEntryData {
 	label: HighlightedLabel;
 }
 
+/**
+ * Rendering for the different parts of a dialog entry.
+ */
 class DialogEntryRenderer implements ITreeRenderer<DialogEntry, string, DialogEntryData> {
 	public get templateId(): string {
 		return "dialog-entry";
 	}
 
+	/**
+	 * Append and return containers for each part of the dialog entry.
+	 */
 	public renderTemplate(container: HTMLElement): DialogEntryData {
 		addClass(container, "dialog-entry");
 		addClass(container, "dialog-grid");
@@ -422,6 +466,9 @@ class DialogEntryRenderer implements ITreeRenderer<DialogEntry, string, DialogEn
 		};
 	}
 
+	/**
+	 * Render a dialog entry.
+	 */
 	public renderElement(node: ITreeNode<DialogEntry, string>, _index: number, templateData: DialogEntryData): void {
 		templateData.icon.className = "dialog-entry-icon monaco-icon-label";
 		const classes = getIconClasses(
@@ -442,11 +489,33 @@ class DialogEntryRenderer implements ITreeRenderer<DialogEntry, string, DialogEn
 			start: 0,
 			end: node.filterData.length,
 		}] : []);
-		templateData.size.innerText = node.element.size.toString();
+		templateData.size.innerText = !node.element.isDirectory ? this.humanReadableSize(node.element.size) : "";
 		templateData.lastModified.innerText = node.element.lastModified;
+
+		// We know this exists because we created the template.
+		const entryContainer = templateData.label.element.parentElement!.parentElement!.parentElement!;
+		if (node.element.isDisabled) {
+			entryContainer.classList.add("disabled");
+		} else {
+			entryContainer.classList.remove("disabled");
+		}
 	}
 
+	/**
+	 * Does nothing (not implemented).
+	 */
 	public disposeTemplate(_templateData: DialogEntryData): void {
 		// throw new Error("Method not implemented.");
+	}
+
+	/**
+	 * Given a positive size in bytes, return a string that is more readable for
+	 * humans.
+	 */
+	private humanReadableSize(bytes: number): string {
+		const units = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+		const i = Math.min(Math.floor(bytes && Math.log(bytes) / Math.log(1000)), units.length - 1);
+
+		return (bytes / Math.pow(1000, i)).toFixed(2) + " " + units[i];
 	}
 }

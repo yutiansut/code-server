@@ -3,24 +3,35 @@ const os = require("os");
 const environment = process.env.NODE_ENV || "development";
 const HappyPack = require("happypack");
 const webpack = require("webpack");
+const TerserPlugin = require("terser-webpack-plugin");
 
 const root = path.join(__dirname, "..");
 
 module.exports = (options = {}) => ({
 	context: root,
 	devtool: "none",
-	externals: ["fsevents"],
+	externals: {
+		fsevents: "fsevents",
+	},
+	output: {
+		path: path.join(options.dirname || __dirname, "out"),
+		chunkFilename: `${options.name || "general"}.[name].[hash:6].js`,
+		filename: `${options.name || "general"}.[name].[hash:6].js`
+	},
 	module: {
 		rules: [{
 			loader: "string-replace-loader",
 			test: /\.(j|t)s/,
 			options: {
 				multiple: [{
-					// These will be handled by file-loader. We need the location because
-					// they are parsed as URIs and will throw errors if not fully formed.
-					// The !! prefix causes it to ignore other loaders (doesn't work).
+					// These will be handled by file-loader. Must be a fully formed URI.
+					// The !! prefix causes it to ignore other loaders.
 					search: "require\\.toUrl\\(",
-					replace: "location.protocol + '//' + location.host + '/' + require('!!file-loader?name=[path][name].[ext]!' + ",
+					replace: `${
+						options.node
+							? "'file://'"
+							: "location.protocol + '//' + location.host + location.pathname.replace(/\\/$/,'')"
+					} + '/' + require('!!file-loader?name=[path][name].[ext]!' + `,
 					flags: "g",
 				}, {
 					search: "require\\.__\\$__nodeRequire",
@@ -43,48 +54,6 @@ module.exports = (options = {}) => ({
 		}, {
 			test: /\.wasm$/,
 			type: "javascript/auto",
-		}, {
-			// Fixes spdlog.
-			test: /spdlog(\\|\/)index\.js/,
-			loader: "string-replace-loader",
-			options: {
-				multiple: [{
-					search: "const spdlog.*;",
-					replace: "const spdlog = __non_webpack_require__(global.SPDLOG_LOCATION);",
-					flags: "g",
-				}],
-			},
-		}, {
-			// This is required otherwise it attempts to require("package.json")
-			test: /@oclif(\\|\/)command(\\|\/)lib(\\|\/)index\.js/,
-			loader: "string-replace-loader",
-			options: {
-				multiple: [{
-					search: "checkNodeVersion\\(\\);",
-					replace: "",
-					flags: "g",
-				}],
-			},
-		}, {
-			test: /node\-pty\-prebuilt(\\|\/)lib(\\|\/)index\.js/,
-			loader: "string-replace-loader",
-			options: {
-				multiple: [{
-					search: "exports\\.native.*;",
-					replace: "exports.native = null;",
-					flags: "g",
-				}],
-			},
-		}, {
-			test: /node\-pty\-prebuilt(\\|\/)lib(\\|\/).*\.js/,
-			loader: "string-replace-loader",
-			options: {
-				multiple: [{
-					search: "var pty = .*pty\.node.*;",
-					replace: "var pty = __non_webpack_require__(global.NODEPTY_LOCATION);",
-					flags: "g",
-				}],
-			},
 		}],
 	},
 	resolve: {
@@ -107,6 +76,11 @@ module.exports = (options = {}) => ({
 			id: "ts",
 			threads: Math.max(os.cpus().length - 1, 1),
 			loaders: [{
+				path: "cache-loader",
+				query: {
+					cacheDirectory: path.join(__dirname, "..", ".cache"),
+				},
+			}, {
 				path: "ts-loader",
 				query: {
 					happyPackMode: true,
@@ -116,11 +90,17 @@ module.exports = (options = {}) => ({
 		}),
 		new webpack.DefinePlugin({
 			"process.env.NODE_ENV": `"${environment}"`,
-			"process.env.LOG_LEVEL": `"${process.env.LOG_LEVEL || ""}"`,
-			"process.env.SERVICE_URL": `"${process.env.SERVICE_URL || ""}"`,
 			"process.env.VERSION": `"${process.env.VERSION || ""}"`,
 		}),
 	],
+	optimization: {
+		minimizer: [
+			new TerserPlugin({
+				cache: path.join(__dirname, "..", ".cache", "terser"),
+				parallel: true,
+			}),
+		],
+	},
 	stats: {
 		all: false, // Fallback for options not defined.
 		errors: true,
